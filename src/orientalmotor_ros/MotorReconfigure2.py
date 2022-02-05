@@ -12,15 +12,15 @@ from orientalmotor_ros.msg import motor
 
 
 class OrientalMotor:
-    def __init__(self):
-        self.client = serial.Serial("/dev/ttyUSB1", 115200, timeout=0.01, parity=serial.PARITY_EVEN, stopbits=serial.STOPBITS_ONE)
-        self.size = 16
+    def __init__(self, port):
+        self.client = serial.Serial(port, 115200, timeout=0.01, parity=serial.PARITY_EVEN, stopbits=serial.STOPBITS_ONE)
+        self.size = 30
         self.pulse_angle = 0.36
         print(self.client.name)
         self.srv = Server(motorConfig, self.callback)
-        rospy.Subscriber("motor/positioning_rotate", Empty, lambda: self.positioning_rotate(motor), queue_size=8)
-        rospy.Subscriber("motor/continuous_rotate", Empty, lambda: self.continuous_rotate(motor), queue_size=8)
-        rospy.Subscriber("motor/stop", Empty, self.off, queue_size=8)
+        rospy.Subscriber("motor/positioning_rotate", Empty, self.positioning_rotate)
+        rospy.Subscriber("motor/continuous_rotate", Empty, self.continuous_rotate)
+        rospy.Subscriber("motor/stop", Empty, self.off)
 
     def callback(self, config, level):
         rospy.loginfo("""Reconfigure Request: {rpm}, {angle}, {reverse}""".format(**config))
@@ -33,22 +33,22 @@ class OrientalMotor:
         return config
 
     def positioning_rotate(self, msg):
-        rpm = msg.rpm
-        acceleration = msg.acceleration
-        deceleration = msg.deceleration
+        rpm = motor.rpm
+        acceleration = motor.acceleration
+        deceleration = motor.deceleration
         self._apply_operation_method()
         time.sleep(0.1)
-        self._apply_angle(msg)
+        self._apply_angle(motor)
         time.sleep(0.1)
         self._apply_rpm(rpm)
         time.sleep(0.1)
-        # self.apply_acceleration(acceleration)
-        # time.sleep(0.1)
-        # self.apply_deceleration(deceleration)
-        # time.sleep(0.1)
+        self._apply_acceleration(acceleration)
+        time.sleep(0.1)
+        self._apply_deceleration(deceleration)
+        time.sleep(0.1)
         self._start_on()
         time.sleep(0.1)
-        self.off()
+        self.off(msg)
 
     def return_to_origin(self):
         self._home_on()
@@ -56,8 +56,8 @@ class OrientalMotor:
         self.off()
 
     def continuous_rotate(self, msg):
-        rpm = msg.rpm
-        reverse = msg.reverse
+        rpm = motor.rpm
+        reverse = motor.reverse
         self._apply_rpm(rpm)
         time.sleep(0.5)
         if(reverse):
@@ -77,26 +77,24 @@ class OrientalMotor:
         return command
 
     def _rpm_to_bytes(self, rpm):
-        hz = int(rpm / 60 * 360 / self.pulse_angle)
+        hz = int(rpm * 6 / self.pulse_angle)
         command = struct.pack(">H", hz)
         return command
 
     def _rpm_acceleration_to_bytes(self, acceleration):
-        hz = int(acceleration / 60 * 360 / self.pulse_angle)
+        hz = int(acceleration * 6  / self.pulse_angle)
         time = 1000 / hz * 1000
         command = struct.pack(">I", time)
         return command
 
-    def _apply_acceleration(self, msg):
-        acceleration = msg.acceleration
+    def _apply_acceleration(self, acceleration):
         command = b"\x01\x06\x06\x01" + self._rpm_acceleration_to_bytes(acceleration)
         command += self._error_check(command)
         self.client.write(command)
         result = self.client.read(self.size)
         print("acceleration set: {}".format(result))
 
-    def _apply_deceleration(self, msg):
-        deceleration = msg.deceleration
+    def _apply_deceleration(self, deceleration):
         command = b"\x01\x06\x06\x81" + self._rpm_acceleration_to_bytes(deceleration)
         command += self._error_check(command)
         self.client.write(command)
@@ -136,7 +134,7 @@ class OrientalMotor:
         result = self.client.read(self.size)
         print("start on: {}".format(result))
 
-    def off(self):
+    def off(self, msg):
         command = b"\x01\x06\x00\x7d\x00\x00"
         command += self._error_check(command)
         self.client.write(command)

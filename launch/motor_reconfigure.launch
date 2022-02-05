@@ -1,4 +1,6 @@
 <launch>
-    <node pkg="orientalmotor_ros" name="motor_control" type="serial_node.py"/>
+    <node pkg="orientalmotor_ros" name="motor_control" type="serial_node.py">
+        <param name="port" value="/dev/ttyUSB0" />
+    </node>
     <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="reconfigure" args="motor_control"/>
 </launch>
